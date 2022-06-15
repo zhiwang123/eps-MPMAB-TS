@@ -22,6 +22,12 @@ class MAB:
         self.total_pseudoregret = 0
         self.pseudoregret_history = []
 
+        self.ind_mean = np.zeros(self.K)
+        self.ind_var = np.ones(self.K)
+        self.agg_mean = np.zeros(self.K)
+        self.agg_var = np.ones(self.K)
+        self.arm_sample_count_others = np.zeros(self.K)
+
     def ChooseBestArm(self):
         return np.argmax(self.upper_confidence_bounds)
 
@@ -52,17 +58,37 @@ class MAB:
             self.total_pseudoregret += self.best_arm_mean - self.ground_truth_means[arm]
             self.pseudoregret_history.append(self.total_pseudoregret)
 
-    def BanditPlay(self):
-        self.SampleOnce()
-        for t in range(self.T - self.K):
-            curr_arm = self.ChooseBestArm()
-            curr_sample = np.random.binomial(1, self.ground_truth_means[curr_arm])
-            self.Update(curr_arm, curr_sample)
-            self.total_reward += curr_sample
-            self.reward_history.append(self.total_reward)
-            self.regret_history.append(self.best_arm_mean * (len(self.reward_history)) - self.total_reward)
-            self.total_pseudoregret += self.best_arm_mean - self.ground_truth_means[curr_arm]
-            self.pseudoregret_history.append(self.total_pseudoregret)
+    def single_round_UCB_play(self):
+        curr_arm = self.ChooseBestArm()
+        curr_sample = np.random.binomial(1, self.ground_truth_means[curr_arm])
+        self.Update(curr_arm, curr_sample)
+        self.total_reward += curr_sample
+        self.reward_history.append(self.total_reward)
+        self.regret_history.append(self.best_arm_mean * (len(self.reward_history)) - self.total_reward)
+        self.total_pseudoregret += self.best_arm_mean - self.ground_truth_means[curr_arm]
+        self.pseudoregret_history.append(self.total_pseudoregret)
+
+    def single_round_TS(self):
+        theta_hat = np.zeros(self.K)
+        for i in range(self.K):
+            n = self.arm_sample_count[i]
+            if n == 0:
+                n = 1
+            theta_hat[i] = np.random.normal(self.empirical_means[i], np.sqrt(1 / n), size=1)
+
+        arm_to_pull = np.argmax(theta_hat)
+        reward = np.random.binomial(1, self.ground_truth_means[arm_to_pull])
+
+        self.curr_t += 1
+        self.arm_sample_count[arm_to_pull] += 1
+        self.arm_rewards[arm_to_pull] += reward
+        self.empirical_means[arm_to_pull] = float(self.arm_rewards[arm_to_pull]) / \
+                                            float(self.arm_sample_count[arm_to_pull])
+        self.total_reward += reward
+        self.reward_history.append(self.total_reward)
+        self.regret_history.append(self.best_arm_mean * (len(self.reward_history)) - self.total_reward)
+        self.total_pseudoregret += self.best_arm_mean - self.ground_truth_means[arm_to_pull]
+        self.pseudoregret_history.append(self.total_pseudoregret)
 
 class MPMAB:
     '''
@@ -124,8 +150,8 @@ class MPMAB:
             sum += opt
         return sum
 
-class RobustAgg:
-    def __init__(self, a_epsilon, a_MPMAB):
+class RobustTS:
+    def __init__(self, a_epsilon, a_MPMAB, a_sizeI):
         self.m_MPMAB = a_MPMAB
         self.m_num_players = self.m_MPMAB.GetNumPlayers()
         self.m_arm_count = self.m_MPMAB.GetArmCount()
@@ -136,6 +162,172 @@ class RobustAgg:
                           range(self.m_num_players)]
         self.decisions = np.zeros(self.m_num_players, dtype=np.int64)
         self.player_rewards = np.zeros(self.m_num_players)
+        self.a_sizeI = a_sizeI
+
+        self.opt_pulls = 0
+        self.near_opt_pulls = 0
+        self.subpar_pulls = 0
+
+        self.near_opt_regret = 0.0
+        self.subpar_regret = 0.0
+
+    def PrintArmPulls(self):
+        for p in range(self.m_num_players):
+            print(p, self.m_players[p].arm_sample_count)
+
+    def CountArmPullPercentages(self):
+        for p in range(self.m_num_players):
+            for i in range(self.m_arm_count):
+                if self.m_players[p].ground_truth_means[i] == self.m_players[p].best_arm_mean:
+                    self.opt_pulls = self.opt_pulls + self.m_players[p].arm_sample_count[i]
+                elif i < (self.m_arm_count - self.a_sizeI):
+                    self.near_opt_pulls = self.near_opt_pulls + self.m_players[p].arm_sample_count[i]
+                else:
+                    self.subpar_pulls = self.subpar_pulls + self.m_players[p].arm_sample_count[i]
+
+        self.opt_pulls = self.opt_pulls / (self.m_num_players * self.m_time_horizon)
+        self.near_opt_pulls = self.near_opt_pulls / (self.m_num_players * self.m_time_horizon)
+        self.subpar_pulls = self.subpar_pulls / (self.m_num_players * self.m_time_horizon)
+
+    def CountRegretPercentages(self):
+        total = 0.0
+        for p in range(self.m_num_players):
+            for i in range(self.m_arm_count):
+                if i < (self.m_arm_count - self.a_sizeI):
+                    gap = self.m_players[p].best_arm_mean - self.m_players[p].ground_truth_means[i]
+                    self.near_opt_regret += self.m_players[p].arm_sample_count[i] * gap
+                else:
+                    gap = self.m_players[p].best_arm_mean - self.m_players[p].ground_truth_means[i]
+                    self.subpar_regret += self.m_players[p].arm_sample_count[i] * gap
+
+            total += self.m_players[p].total_pseudoregret
+
+    def Run(self):
+        for t in range(self.m_time_horizon):
+
+            for curr_player in range(self.m_num_players):
+
+                theta = np.zeros(self.m_arm_count)
+
+                for i in range(self.m_arm_count):
+
+                    n = max(self.m_players[curr_player].arm_sample_count[i], 1)
+                    total = max(self.m_players[curr_player].arm_sample_count_others[i]
+                                + self.m_players[curr_player].arm_sample_count[i], 1)
+
+                    if n >= np.log(self.m_time_horizon) / (2 * self.m_epsilon * self.m_epsilon) + 2 * self.m_num_players:
+                        theta[i] = \
+                            np.random.normal(self.m_players[curr_player].ind_mean[i],
+                                             np.sqrt(self.m_players[curr_player].ind_var[i]), 1)
+                    else:
+                        theta[i] = \
+                            np.random.normal(self.m_players[curr_player].agg_mean[i],
+                                             np.sqrt(self.m_players[curr_player].agg_var[i]), 1)
+
+                arm_to_pull = np.argmax(theta)
+                self.decisions[curr_player] = arm_to_pull
+
+            # Pull arms
+            for p, p_arm in enumerate(self.decisions):
+                p_sample = np.random.binomial(1, self.m_players[p].ground_truth_means[p_arm])
+                self.player_rewards[p] = p_sample
+
+            # Update
+            for p, reward in enumerate(self.player_rewards):
+                arm_pulled = self.decisions[p]
+                self.m_players[p].curr_t += 1
+
+                # Update n_i^p
+                self.m_players[p].arm_sample_count[arm_pulled] += 1
+
+                # Update m_i^p
+                for q in range(self.m_num_players):
+                    if q != p:
+                        self.m_players[q].arm_sample_count_others[arm_pulled] += 1
+
+                self.m_players[p].arm_rewards[arm_pulled] += reward
+                self.m_players[p].empirical_means[arm_pulled] = float(self.m_players[p].arm_rewards[arm_pulled]) / \
+                                                    float(self.m_players[p].arm_sample_count[arm_pulled])
+                self.m_players[p].total_reward += reward
+                self.m_players[p].reward_history.append(self.m_players[p].total_reward)
+                self.m_players[p].regret_history.append(self.m_players[p].best_arm_mean *
+                                                        (len(self.m_players[p].reward_history)) - self.m_players[p].total_reward)
+                self.m_players[p].total_pseudoregret += \
+                    self.m_players[p].best_arm_mean - self.m_players[p].ground_truth_means[arm_pulled]
+                self.m_players[p].pseudoregret_history.append(self.m_players[p].total_pseudoregret)
+
+            for p in range(self.m_num_players):
+                arm_pulled = self.decisions[p]
+                self.m_players[p].ind_mean[arm_pulled] = self.m_players[p].empirical_means[arm_pulled]
+                n = max(1, self.m_players[p].arm_sample_count[arm_pulled])
+                self.m_players[p].ind_var[arm_pulled] = 1 / n
+
+                y = 0
+                for q in range(self.m_num_players):
+                    y += self.m_players[q].arm_rewards[arm_pulled]
+                m = max(1, self.m_players[p].arm_sample_count[arm_pulled] + self.m_players[p].arm_sample_count_others[arm_pulled])
+                self.m_players[p].agg_mean[arm_pulled] = y / m + self.m_epsilon
+
+                m = max(1, self.m_players[p].arm_sample_count[arm_pulled] +
+                        self.m_players[p].arm_sample_count_others[arm_pulled] - self.m_num_players)
+                self.m_players[p].agg_var[arm_pulled] = 1 / m
+
+        self.CountArmPullPercentages()
+        self.CountRegretPercentages()
+
+    def CollectiveRegret(self):
+        return np.sum(np.array([player.regret_history for player in self.m_players]), axis=0)
+
+    def CollectivePseudoRegret(self):
+        return np.sum(np.array([player.pseudoregret_history for player in self.m_players]), axis=0)
+
+class RobustAgg:
+    def __init__(self, a_epsilon, a_MPMAB, a_sizeI):
+        self.m_MPMAB = a_MPMAB
+        self.m_num_players = self.m_MPMAB.GetNumPlayers()
+        self.m_arm_count = self.m_MPMAB.GetArmCount()
+        self.m_epsilon = float(a_epsilon)
+        self.m_time_horizon = self.m_MPMAB.GetHorizon()
+        self.m_ground_truth_means_array = self.m_MPMAB.GetMeans()
+        self.m_players = [MAB(self.m_arm_count, self.m_time_horizon, self.m_ground_truth_means_array[r, :]) for r in
+                          range(self.m_num_players)]
+        self.decisions = np.zeros(self.m_num_players, dtype=np.int64)
+        self.player_rewards = np.zeros(self.m_num_players)
+
+        self.a_sizeI = a_sizeI
+
+        self.opt_pulls = 0
+        self.near_opt_pulls = 0
+        self.subpar_pulls = 0
+        self.near_opt_regret = 0.0
+        self.subpar_regret = 0.0
+
+    def CountArmPullPercentages(self):
+        for p in range(self.m_num_players):
+            for i in range(self.m_arm_count):
+                if self.m_players[p].ground_truth_means[i] == self.m_players[p].best_arm_mean:
+                    self.opt_pulls = self.opt_pulls + self.m_players[p].arm_sample_count[i]
+                elif i < (self.m_arm_count - self.a_sizeI):
+                    self.near_opt_pulls = self.near_opt_pulls + self.m_players[p].arm_sample_count[i]
+                else:
+                    self.subpar_pulls = self.subpar_pulls + self.m_players[p].arm_sample_count[i]
+
+        self.opt_pulls = self.opt_pulls / (self.m_num_players * self.m_time_horizon)
+        self.near_opt_pulls = self.near_opt_pulls / (self.m_num_players * self.m_time_horizon)
+        self.subpar_pulls = self.subpar_pulls / (self.m_num_players * self.m_time_horizon)
+
+    def CountRegretPercentages(self):
+        total = 0.0
+        for p in range(self.m_num_players):
+            for i in range(self.m_arm_count):
+                if i < (self.m_arm_count - self.a_sizeI):
+                    gap = self.m_players[p].best_arm_mean - self.m_players[p].ground_truth_means[i]
+                    self.near_opt_regret += self.m_players[p].arm_sample_count[i] * gap
+                else:
+                    gap = self.m_players[p].best_arm_mean - self.m_players[p].ground_truth_means[i]
+                    self.subpar_regret += self.m_players[p].arm_sample_count[i] * gap
+
+            total += self.m_players[p].total_pseudoregret
 
     def GetEpsilon(self):
         return self.m_epsilon
@@ -201,9 +393,31 @@ class RobustAgg:
             alpha, ucb = self.BestWeightedUCB(n, m_other_players, X_a, Y_a, self.m_epsilon)
             self.m_players[curr_player].upper_confidence_bounds[a] = ucb
 
-    def IndividualBanditPlay(self):
+    def IndUCB(self):
         for player in self.m_players:
-            player.BanditPlay()
+            player.SampleOnce()
+        for t in range(self.m_time_horizon - self.m_arm_count):
+            for player in self.m_players:
+                player.single_round_UCB_play()
+
+        self.CountArmPullPercentages()
+        self.CountRegretPercentages()
+
+    def IndTS(self):
+        for t in range(self.m_time_horizon):
+            for player in self.m_players:
+                player.single_round_TS()
+
+        self.CountArmPullPercentages()
+        self.CountRegretPercentages()
+
+    def Run(self):
+        for t in range(self.m_time_horizon):
+            self.GetDecisions()
+            self.Pull()
+            self.ReceiveFeedback()
+        self.CountArmPullPercentages()
+        self.CountRegretPercentages()
 
     def GetDecisions(self):
         for p in range(self.m_num_players):
@@ -239,3 +453,7 @@ class RobustAgg:
 
     def CollectivePseudoRegret(self):
         return np.sum(np.array([player.pseudoregret_history for player in self.m_players]), axis=0)
+
+    def PrintArmPulls(self):
+        for p in range(self.m_num_players):
+            print(p, self.m_players[p].arm_sample_count)
