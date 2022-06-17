@@ -89,7 +89,5 @@ if __name__ == '__main__':
                         type=int, default=10, required=True)
     args = parser.parse_args()
 
-    #compareRegretSizeI(args.num_subpar_arms, args.time_horizon, args.num_instances)
-    #plot.plot(args.num_subpar_arms, args.time_horizon, args.num_instances)
-    for i in range(10):
-        plot.plot(i, args.time_horizon, args.num_instances)
+    compareRegretSizeI(args.num_subpar_arms, args.time_horizon, args.num_instances)
+    plot.plot(args.num_subpar_arms, args.time_horizon, args.num_instances)
