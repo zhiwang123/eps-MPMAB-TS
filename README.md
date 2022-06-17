@@ -14,7 +14,8 @@ Laurel D. Riek, and Kamalika Chaudhuri.)
 - pandas
 
 ###### Remarks:
-The code can be used to reproduce the empirical evaluation in the ICML-2022 paper.
+This repository can be used to reproduce the empirical evaluation in the ICML-2022 paper.
+To reproduce the results in Section E.1 of the paper, please switch to the branch `ts-v`.
 A description of the experimental setup can be found in the paper with further details included in the AISTATS-2021 paper.
 Please first create two folders `data/` and `plots/`, 
 to which data and plots will be saved, respectively.
