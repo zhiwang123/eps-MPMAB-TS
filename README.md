@@ -14,7 +14,7 @@ Laurel D. Riek, and Kamalika Chaudhuri.)
 - pandas
 
 ###### Remarks:
-The current branch `ts-v` can be used to reproduce Section E.1 in appendix of the ICML-2022 paper.
+The current branch `ts-v` can be used to reproduce the results in Section E.1 in appendix of the ICML-2022 paper.
 A description of the experimental setup can be found in the paper with further details included in the AISTATS-2021 paper.
 Please first create two folders `data/` and `plots/`, 
 to which data and plots will be saved, respectively.
