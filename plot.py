@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 def plot(sizeI, T, num_instances):
 
-    num_algorithms = 4
+    num_algorithms = 5
 
     data = pd.read_csv('data/data_ical=%i'%int(sizeI) + '.%i'%int(T) + 'x%i'%int(num_instances) +'.csv')
     a = data.to_numpy()
@@ -18,6 +18,7 @@ def plot(sizeI, T, num_instances):
     indUCBData = np.zeros((num_instances, T))
     indTSData = np.zeros((num_instances, T))
     robustTSData = np.zeros((num_instances, T))
+    robustTSVData = np.zeros((num_instances, T))
 
     # Hard-coded
     for i in range(regret_data.shape[0]): # Four algorithms
@@ -29,6 +30,8 @@ def plot(sizeI, T, num_instances):
             indTSData[int(i / num_algorithms)] = regret_data[i]
         elif i % num_algorithms == 3:
             robustTSData[int(i / num_algorithms)] = regret_data[i]
+        elif i % num_algorithms == 4:
+            robustTSVData[int(i / num_algorithms)] = regret_data[i]
 
     # Compute means and std
     robustAggMean = np.mean(robustAggData, axis = 0)
@@ -39,6 +42,8 @@ def plot(sizeI, T, num_instances):
     indTSStd = np.std(indTSData, axis = 0)
     robustTSMean = np.mean(robustTSData, axis = 0)
     robustTSStd = np.std(robustTSData, axis = 0)
+    robustTSVMean = np.mean(robustTSVData, axis = 0)
+    robustTSVStd = np.std(robustTSVData, axis = 0)
 
     # plot
     mpl.style.use('seaborn')
@@ -55,6 +60,9 @@ def plot(sizeI, T, num_instances):
 
     plt.plot(np.arange(T, dtype=int), robustTSMean, label="RobustAgg-TS(0.15)")
     plt.fill_between(np.arange(T, dtype=int), robustTSMean + robustTSStd, robustTSMean - robustTSStd, alpha=0.2)
+
+    plt.plot(np.arange(T, dtype=int), robustTSVMean, label="RobustAgg-TS-V(0.15)")
+    plt.fill_between(np.arange(T, dtype=int), robustTSVMean + robustTSVStd, robustTSVMean - robustTSVStd, alpha=0.2)
 
     plt.xlabel("Round", fontsize=20, horizontalalignment='center')
     plt.ylabel("Cumulative Collective Regret", fontsize=20)

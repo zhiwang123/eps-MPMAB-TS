@@ -275,6 +275,77 @@ class RobustTS:
         self.CountArmPullPercentages()
         self.CountRegretPercentages()
 
+    def Run_everupdating(self):
+
+        for t in range(self.m_time_horizon):
+
+            for curr_player in range(self.m_num_players):
+
+                theta = np.zeros(self.m_arm_count)
+
+                for i in range(self.m_arm_count):
+
+                    n = max(self.m_players[curr_player].arm_sample_count[i], 1)
+
+                    if n >= np.log(self.m_time_horizon) / (2 * self.m_epsilon * self.m_epsilon) + 2 * self.m_num_players:
+
+                        theta[i] = \
+                            np.random.normal(self.m_players[curr_player].ind_mean[i],
+                                             np.sqrt(self.m_players[curr_player].ind_var[i]), 1)
+                    else:
+                        theta[i] = \
+                            np.random.normal(self.m_players[curr_player].agg_mean[i],
+                                             np.sqrt(self.m_players[curr_player].agg_var[i]), 1)
+
+                arm_to_pull = np.argmax(theta)
+                self.decisions[curr_player] = arm_to_pull
+
+            # Pull arms
+            for p, p_arm in enumerate(self.decisions):
+                p_sample = np.random.binomial(1, self.m_players[p].ground_truth_means[p_arm])
+                self.player_rewards[p] = p_sample
+
+            # Update
+            for p, reward in enumerate(self.player_rewards):
+                arm_pulled = self.decisions[p]
+                self.m_players[p].curr_t += 1
+
+                # Update n_i^p
+                self.m_players[p].arm_sample_count[arm_pulled] += 1
+
+                self.m_players[p].arm_rewards[arm_pulled] += reward
+                self.m_players[p].empirical_means[arm_pulled] = float(self.m_players[p].arm_rewards[arm_pulled]) / \
+                                                    float(self.m_players[p].arm_sample_count[arm_pulled])
+                self.m_players[p].total_reward += reward
+                self.m_players[p].reward_history.append(self.m_players[p].total_reward)
+                self.m_players[p].regret_history.append(self.m_players[p].best_arm_mean *
+                                                        (len(self.m_players[p].reward_history)) - self.m_players[p].total_reward)
+                self.m_players[p].total_pseudoregret += \
+                    self.m_players[p].best_arm_mean - self.m_players[p].ground_truth_means[arm_pulled]
+                self.m_players[p].pseudoregret_history.append(self.m_players[p].total_pseudoregret)
+
+            # Update aggregate posteriors for all players and arms
+            for i in range(self.m_arm_count):
+                m, y = 0, 0
+                for p in range(self.m_num_players):
+                    m += self.m_players[p].arm_sample_count[i]
+                    y += self.m_players[p].arm_rewards[i]
+                m_ = max(m, 1)
+                m__ = max(m - self.m_num_players, 1)
+                for p in range(self.m_num_players):
+                    self.m_players[p].agg_mean[i] = y / m_ + self.m_epsilon
+                    self.m_players[p].agg_var[i] = 1 / m__
+
+            # Update individual posteriors
+            for p in range(self.m_num_players):
+                arm_pulled = self.decisions[p]
+                self.m_players[p].ind_mean[arm_pulled] = self.m_players[p].empirical_means[arm_pulled]
+                n = max(1, self.m_players[p].arm_sample_count[arm_pulled])
+                self.m_players[p].ind_var[arm_pulled] = 1 / n
+
+        self.CountArmPullPercentages()
+        self.CountRegretPercentages()
+
     def CollectiveRegret(self):
         return np.sum(np.array([player.regret_history for player in self.m_players]), axis=0)
 

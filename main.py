@@ -3,8 +3,6 @@ import module as mx
 import pandas as pd
 import argparse
 import plot
-import plot_perc
-import plot_regret_perc
 
 def compareRegretSizeI(sizeI, T, num_instances):
     K = 10
@@ -33,6 +31,9 @@ def compareRegretSizeI(sizeI, T, num_instances):
         # Algorithm 4: robust aggregation (TS)
         algRobustTS = mx.RobustTS(ground_truth_epsilon, problem_instance, sizeI)
 
+        # Algorithm 5: robustTS
+        algRobustTSV = mx.RobustTS(ground_truth_epsilon, problem_instance, sizeI)
+
         algRobustAgg.Run()
         print("RobustAgg done.")
 
@@ -44,6 +45,9 @@ def compareRegretSizeI(sizeI, T, num_instances):
 
         algRobustTS.Run()
         print("robustAgg-TS done.")
+
+        algRobustTSV.Run_everupdating()
+        print("robustAgg-TS-V done.")
 
         # <editor-fold desc="Concatenate data">
         df = pd.DataFrame({'Round':np.arange(T, dtype=int),
@@ -62,47 +66,15 @@ def compareRegretSizeI(sizeI, T, num_instances):
             {'Round': np.arange(T, dtype=int), 'Cumulative Collective Regret': algRobustTS.CollectiveRegret(),
              'Cumulative Collective Pseudo-Regret': algRobustTS.CollectivePseudoRegret(),
              'Algorithm': 'RobustAgg-TS', 'instance_num': int(i)})])
+        df = pd.concat([df, pd.DataFrame(
+            {'Round': np.arange(T, dtype=int), 'Cumulative Collective Regret': algRobustTSV.CollectiveRegret(),
+             'Cumulative Collective Pseudo-Regret': algRobustTSV.CollectivePseudoRegret(),
+             'Algorithm': 'RobustAgg-TS-V', 'instance_num': int(i)})])
 
-
-        df2 = pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'RobustAgg',
-                            'Opt Percentage': algRobustAgg.opt_pulls,
-                            'Near-optimal Percentage': algRobustAgg.near_opt_pulls,
-                            'Subpar Percentage': algRobustAgg.subpar_pulls})
-        df2 = pd.concat([df2, pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'Ind-UCB',
-                                           'Opt Percentage': algBaseline.opt_pulls,
-                                           'Near-optimal Percentage': algBaseline.near_opt_pulls,
-                                           'Subpar Percentage': algBaseline.subpar_pulls})])
-        df2 = pd.concat([df2, pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'Ind-TS',
-                                           'Opt Percentage': algTS.opt_pulls,
-                                           'Near-optimal Percentage': algTS.near_opt_pulls,
-                                           'Subpar Percentage': algTS.subpar_pulls})])
-        df2 = pd.concat([df2, pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'RobustAgg-TS',
-                                           'Opt Percentage': algRobustTS.opt_pulls,
-                                           'Near-optimal Percentage': algRobustTS.near_opt_pulls,
-                                           'Subpar Percentage': algRobustTS.subpar_pulls})])
-
-
-        df3 = pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'RobustAgg',
-                            'Near-optimal Regret': algRobustAgg.near_opt_regret,
-                            'Subpar Regret': algRobustAgg.subpar_regret})
-        df3 = pd.concat([df3, pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'Ind-UCB',
-                                           'Near-optimal Regret': algBaseline.near_opt_regret,
-                                           'Subpar Regret': algBaseline.subpar_regret})])
-        df3 = pd.concat([df3, pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'Ind-TS',
-                                           'Near-optimal Regret': algTS.near_opt_regret,
-                                           'Subpar Regret': algTS.subpar_regret})])
-        df3 = pd.concat([df3, pd.DataFrame({'instance_num': [int(i)], 'Algorithm': 'RobustAgg-TS',
-                                           'Near-optimal Regret': algRobustTS.near_opt_regret,
-                                           'Subpar Regret': algRobustTS.subpar_regret})])
         data = pd.concat([data, df])
-        data2 = pd.concat([data2, df2])
-        data3 = pd.concat([data3, df3])
         # </editor-fold>
 
     data.to_csv('data/data_ical=%i'%int(sizeI) + '.%i'%int(T) + 'x%i'%int(num_instances) +'.csv',index=False)
-    data2.to_csv('data/percentages_ical=%i'%int(sizeI) + '.%i'%int(T) + 'x%i'%int(num_instances) +'.csv',index=False)
-    data3.to_csv('data/regret_percentages_ical=%i'%int(sizeI) + '.%i'%int(T) + 'x%i'%int(num_instances) +'.csv',
-                 index=False)
 
 if __name__ == '__main__':
 
@@ -117,7 +89,7 @@ if __name__ == '__main__':
                         type=int, default=10, required=True)
     args = parser.parse_args()
 
-    compareRegretSizeI(args.num_subpar_arms, args.time_horizon, args.num_instances)
-    plot.plot(args.num_subpar_arms, args.time_horizon, args.num_instances)
-    plot_perc.plot(args.num_subpar_arms, args.time_horizon, args.num_instances)
-    plot_regret_perc.plot(args.num_subpar_arms, args.time_horizon, args.num_instances)
+    #compareRegretSizeI(args.num_subpar_arms, args.time_horizon, args.num_instances)
+    #plot.plot(args.num_subpar_arms, args.time_horizon, args.num_instances)
+    for i in range(10):
+        plot.plot(i, args.time_horizon, args.num_instances)

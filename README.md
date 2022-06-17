@@ -14,12 +14,12 @@ Laurel D. Riek, and Kamalika Chaudhuri.)
 - pandas
 
 ###### Remarks:
-The code can be used to reproduce the empirical evaluation in the ICML-2022 paper.
+The current branch `ts-v` can be used to reproduce Section E.1 in appendix of the ICML-2022 paper.
 A description of the experimental setup can be found in the paper with further details included in the AISTATS-2021 paper.
 Please first create two folders `data/` and `plots/`, 
 to which data and plots will be saved, respectively.
 
 ###### Usage/Examples:
-- To run the experiment with `30` generated Bernoulli 0.15-MPMAB problem instances, 
+- To run the empirical comparison with `30` generated Bernoulli 0.15-MPMAB problem instances, 
  each of which has `8` subpar arms out of `10` arms and a horizon of `50000` rounds:
 `python main.py --time_horizon 50000 --num_subpar_arms 8 --num_instances 30`.
